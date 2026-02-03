@@ -46,7 +46,7 @@ class BaseEmbeddingModel(ABC):
         """等同于aencode"""
         return await self.aencode(queries)
 
-    def batch_encode(self, messages: list[str], batch_size: int = 40) -> list[list[float]]:
+    def batch_encode(self, messages: list[str], batch_size: int = 10) -> list[list[float]]:
         # logger.info(f"Batch encoding {len(messages)} messages")
         data = []
         task_id = None
@@ -67,7 +67,7 @@ class BaseEmbeddingModel(ABC):
 
         return data
 
-    async def abatch_encode(self, messages: list[str], batch_size: int = 40) -> list[list[float]]:
+    async def abatch_encode(self, messages: list[str], batch_size: int = 10) -> list[list[float]]:
         data = []
         task_id = None
         if len(messages) > batch_size:

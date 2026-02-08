@@ -63,7 +63,7 @@ show_usage() {
     printf "  %-25s %15s\n" "目录" "大小"
     printf "  %-25s %15s\n" "-------------------------" "---------------"
 
-    for dir in "${SAVES_DIR}" "${MODELS_DIR}" "${LOGS_DIR}" "${CONFIG_DIR}"; do
+    for dir in "${SAVE_DIR}" "${MODEL_DIR}" "${LOGS_DIR}" "${CONFIG_DIR}"; do
         if [ -d "$dir" ]; then
             local size=$(du -sh "$dir" 2>/dev/null | cut -f1)
             local relative_path="${dir#$data_root/}"

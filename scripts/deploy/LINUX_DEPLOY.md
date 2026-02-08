@@ -410,6 +410,33 @@ NEO4J_DATA_DIR="${DATA_ROOT}/neo4j"
 MILVUS_DATA_DIR="${DATA_ROOT}/milvus"
 PADDLEX_DATA_DIR="${DATA_ROOT}/paddlex"
 
+# 数据目录结构定义（用于初始化检查和验证）
+DATA_DIRECTORIES=(
+    # 数据库数据目录
+    "${POSTGRES_DATA_DIR}"
+    "${NEO4J_DATA_DIR}"
+    "${MILVUS_DATA_DIR}"
+    "${PADDLEX_DATA_DIR}"
+
+    # 应用数据目录
+    "${SAVES_DIR}"
+    "${MODELS_DIR}"
+
+    # 配置和日志目录
+    "${CONFIG_DIR}/env"
+    "${LOGS_DIR}/docker"
+
+    # Neo4j 子目录
+    "${DATA_ROOT}/neo4j/data"
+    "${DATA_ROOT}/neo4j/logs"
+
+    # Milvus 子目录
+    "${DATA_ROOT}/milvus/etcd"
+    "${DATA_ROOT}/milvus/minio"
+    "${DATA_ROOT}/milvus/minio_config"
+    "${DATA_ROOT}/milvus/logs"
+)
+
 # ============================ 服务配置 ============================
 COMPOSE_FILE="docker-compose.yml"
 SERVICE_NAMES=("api" "web" "postgres" "neo4j" "milvus" "minio")

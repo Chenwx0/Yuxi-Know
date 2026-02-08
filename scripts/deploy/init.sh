@@ -199,8 +199,8 @@ setup_environment() {
     local config_env_file="${CONFIG_DIR}/env/.env"
 
     # 计算展开后的路径变量（直接基于 DATA_ROOT）
-    local saves_dir="${DATA_ROOT}/saves"
-    local models_dir="${DATA_ROOT}/models"
+    local SAVE_DIR="${DATA_ROOT}/saves"
+    local MODEL_DIR="${DATA_ROOT}/models"
     local postgres_data_dir="${DATA_ROOT}/postgres"
     local neo4j_data_dir="${DATA_ROOT}/neo4j"
     local milvus_data_dir="${DATA_ROOT}/milvus"
@@ -219,12 +219,12 @@ setup_environment() {
         local need_update=false
 
         for var_entry in "DATA_ROOT=${DATA_ROOT}" \
-            "SAVES_DIR=${saves_dir}" \
+            "SAVE_DIR=${SAVE_DIR}" \
             "POSTGRES_DATA_DIR=${postgres_data_dir}" \
             "NEO4J_DATA_DIR=${neo4j_data_dir}" \
             "MILVUS_DATA_DIR=${milvus_data_dir}" \
             "PADDLEX_DATA_DIR=${paddlex_data_dir}" \
-            "MODELS_DIR=${models_dir}"; do
+            "MODEL_DIR=${MODEL_DIR}"; do
 
             local var_name="${var_entry%%=*}"
             if ! grep -q "^${var_name}=" "$env_file"; then
@@ -253,12 +253,12 @@ setup_environment() {
         local need_update=false
 
         for var_entry in "DATA_ROOT=${DATA_ROOT}" \
-            "SAVES_DIR=${saves_dir}" \
+            "SAVE_DIR=${SAVE_DIR}" \
             "POSTGRES_DATA_DIR=${postgres_data_dir}" \
             "NEO4J_DATA_DIR=${neo4j_data_dir}" \
             "MILVUS_DATA_DIR=${milvus_data_dir}" \
             "PADDLEX_DATA_DIR=${paddlex_data_dir}" \
-            "MODELS_DIR=${models_dir}"; do
+            "MODEL_DIR=${MODEL_DIR}"; do
 
             local var_name="${var_entry%%=*}"
             if ! grep -q "^${var_name}=" "$env_file"; then
@@ -295,12 +295,12 @@ setup_environment() {
             echo "# 以下配置由部署脚本根据 deploy.conf 自动生成"
             echo ""
             echo "DATA_ROOT=${DATA_ROOT}"
-            echo "SAVES_DIR=${saves_dir}"
+            echo "SAVE_DIR=${SAVE_DIR}"
             echo "POSTGRES_DATA_DIR=${postgres_data_dir}"
             echo "NEO4J_DATA_DIR=${neo4j_data_dir}"
             echo "MILVUS_DATA_DIR=${milvus_data_dir}"
             echo "PADDLEX_DATA_DIR=${paddlex_data_dir}"
-            echo "MODELS_DIR=${models_dir}"
+            echo "MODEL_DIR=${MODEL_DIR}"
 echo "# ========================================================================"
         } >> "$env_file"
 

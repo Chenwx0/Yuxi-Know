@@ -9,11 +9,11 @@ services:
     volumes:
       - ./server:/app/server
       - ./src:/app/src
-      - ${SAVES_DIR:-./docker/volumes}/saves:/app/saves
+      - ${SAVE_DIR:-./saves}:/app/saves
       - ./test:/app/test
       - ./scripts:/app/scripts
       - ./.env:/app/.env
-      - ${MODELS_DIR:-./models}:/models  # 使用默认值处理未定义的环境变量
+      - ${MODEL_DIR:-./models}:/models  # 使用默认值处理未定义的环境变量
     ports:
       - "5050:5050"
     networks:

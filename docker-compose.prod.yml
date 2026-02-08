@@ -9,7 +9,7 @@ services:
     networks:
       - app-network
     volumes:
-      - ${SAVES_DIR:-./docker/volumes}/saves:/app/saves
+      - ${SAVE_DIR:-./docker/volumes}/saves:/app/saves
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # 配置文件优先级：部署脚本会优先从 CONFIG_DIR 同步配置到项目目录

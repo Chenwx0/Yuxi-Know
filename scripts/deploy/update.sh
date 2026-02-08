@@ -16,6 +16,13 @@ SKIP_BACKUP=false
 FORCE=false
 BACKUP_ONLY=false
 
+# 允许通过命令行覆盖分支配置
+# 优先级: 命令行 > 环境变量 > 配置文件
+if [ -n "$DEPLOY_BRANCH" ]; then
+    # 从环境变量获取（如 PowerShell 传递）
+    GIT_BRANCH="$DEPLOY_BRANCH"
+fi
+
 while [[ $# -gt 0 ]]; do
     case $1 in
         --no-backup)
@@ -30,9 +37,13 @@ while [[ $# -gt 0 ]]; do
             BACKUP_ONLY=true
             shift
             ;;
+        --branch)
+            GIT_BRANCH="$2"
+            shift 2
+            ;;
         *)
             log_error "未知参数: $1"
-            log_info "支持的参数: --no-backup, --force, --backup-only"
+            log_info "支持的参数: --no-backup, --force, --backup-only, --branch <分支名>"
             exit 1
             ;;
     esac
@@ -457,6 +468,35 @@ update_deployment() {
     fi
 
     cd "${PROJECT_DIR}" 2>/dev/null || emergency_exit "项目目录不存在: ${PROJECT_DIR}"
+
+    # 显示使用的分支信息
+    log_info "更新分支: ${GIT_BRANCH}"
+    log_info "  优先级来源: $([ -n "$DEPLOY_BRANCH" ] && echo "环境变量 (PowerShell 传递)" || [ "$GIT_BRANCH" != "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown')" ] && echo "配置文件" || echo "当前分支")"
+
+    # 如果指定了分支且不是当前分支，先切换
+    if [ -n "$GIT_BRANCH" ]; then
+        local current_branch=$(git branch --show-current 2>/dev/null || echo "unknown")
+        if [ "$current_branch" != "$GIT_BRANCH" ]; then
+            log_info "切换到指定分支: ${GIT_BRANCH}"
+
+            # 尝试获取远程分支信息
+            git fetch origin "$GIT_BRANCH" 2>/dev/null || true
+
+            # 检查远程是否存在该分支
+            if git rev-parse --verify "origin/${GIT_BRANCH}" >/dev/null 2>&1; then
+                git checkout "$GIT_BRANCH" 2>/dev/null || git checkout -b "$GIT_BRANCH" "origin/${GIT_BRANCH}"
+            else
+                log_warning "远程分支不存在，使用本地分支: ${GIT_BRANCH}"
+                git checkout "$GIT_BRANCH" 2>/dev/null || true
+            fi
+
+            if [ $? -eq 0 ]; then
+                log_ok "✅ 已切换到分支: ${GIT_BRANCH}"
+            else
+                log_warning "⚠️  切换分支失败，继续使用当前分支"
+            fi
+        fi
+    fi
 
     # 1. 预更新检查
     log_info "执行预更新检查..."

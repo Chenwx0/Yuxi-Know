@@ -52,12 +52,17 @@ usage() {
   --quiet     静默模式（只输出错误和警告）
   --verbose   详细模式
   --version   显示版本信息
+  --branch    指定 Git 分支（优先级高于配置文件）
 
 示例:
   # 首次部署
   $0 init
 
-  # 日常更新
+  # 更新到指定分支
+  $0 update --branch dev
+  $0 update --branch feature/new-feature
+
+  # 日常更新（使用配置文件中的分支）
   $0 update
 
   # 强制更新（跳过备份）
@@ -80,6 +85,12 @@ usage() {
 
   # 验证数据卷
   $0 data verify
+
+分支参数优先级:
+  1. 命令行 --branch 参数（最高优先级）
+  2. 环境变量 DEPLOY_BRANCH
+  3. 配置文件 config/deploy.conf 中的 GIT_BRANCH
+  4. Git 仓库默认分支
 
 更多文档请访问: https://github.com/xerrors/Yuxi-Know/blob/main/docs/deployment.md
 EOF
@@ -218,6 +229,7 @@ main() {
     FORCE=false
     QUIET=false
     VERBOSE=false
+    BRANCH=""
 
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -235,6 +247,10 @@ main() {
                 LOG_LEVEL="DEBUG"
                 shift
                 ;;
+            --branch)
+                BRANCH="$2"
+                shift 2
+                ;;
             --version)
                 show_version
                 exit 0
@@ -244,6 +260,16 @@ main() {
                 ;;
         esac
     done
+
+    # 导出分支变量供子脚本使用
+    if [ -n "$BRANCH" ]; then
+        export DEPLOY_BRANCH="$BRANCH"
+        log_info "使用指定分支: $BRANCH"
+    elif [ -n "$DEPLOY_BRANCH" ]; then
+        log_info "使用环境变量分支: $DEPLOY_BRANCH"
+    else
+        log_info "使用配置文件分支: ${GIT_BRANCH:-默认分支}"
+    fi
 
     # 执行命令
     case "$command" in

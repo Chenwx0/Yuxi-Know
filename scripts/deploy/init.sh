@@ -11,6 +11,27 @@ source "${SCRIPT_DIR}/utils/logger.sh"
 source "${SCRIPT_DIR}/utils/validator.sh"
 source "${SCRIPT_DIR}/config/deploy.conf"
 
+# 允许通过命令行覆盖分支配置
+# 优先级: 命令行 > 环境变量 > 配置文件
+if [ -n "$DEPLOY_BRANCH" ]; then
+    # 从环境变量获取（如 PowerShell 传递）
+    GIT_BRANCH="$DEPLOY_BRANCH"
+fi
+
+# 解析命令行参数
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --branch)
+            GIT_BRANCH="$2"
+            shift 2
+            ;;
+        *)
+            # 忽略其他参数
+            shift
+            ;;
+    esac
+done
+
 # 检查并创建数据卷目录
 init_data_volumes() {
     log_section "初始化数据卷目录"
@@ -973,12 +994,19 @@ EOF
 init_deployment() {
     log_section "Yuxi-Know 部署初始化"
 
+    # 确定使用的分支及其优先级来源
+    local branch_source="配置文件"
+    if [ -n "$DEPLOY_BRANCH" ]; then
+        branch_source="环境变量 (PowerShell 传递)"
+    fi
+
     log_info "部署配置:"
     log_info "  项目名称: $PROJECT_NAME"
     log_info "  项目目录: $PROJECT_DIR"
     log_info "  数据根目录: $DATA_ROOT"
     log_info "  Git 仓库: $GIT_REPO"
     log_info "  Git 分支: $GIT_BRANCH"
+    log_info "  分支来源: $branch_source"
 
     # 1. 环境检查
     log_info "执行环境预检..."

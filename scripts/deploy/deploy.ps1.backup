@@ -440,12 +440,13 @@ function Invoke-RemoteInit {
         Write-Success-Log "Switched to branch: ${Branch}"
     }
 
-    # Step 3: Run the init.sh script with branch environment variable
+    # Step 3: Run the init.sh script
     Write-Info-Log "Step 3: Running initialization script"
-    $cmd = "cd ${ProjectDir}; DEPLOY_BRANCH=`"${Branch}`" bash scripts/deploy/init.sh"
+    $cmd = "cd ${ProjectDir}; bash scripts/deploy/init.sh"
 
-    # Note: We pass the branch via DEPLOY_BRANCH environment variable.
-    # The bash script will use this in priority over the config file.
+    # Note: If Branch was specified, init.sh will still see the config file's GIT_BRANCH,
+    # but we've already switched to the correct branch above, so it doesn't matter.
+    # The git checkout we performed takes precedence.
 
     $result = Invoke-RemoteCommand -Server $Server -Port $Port -User $User -Password $Password -KeyPath $KeyPath -Command $cmd -Tool $script:SSHTool.Tool
 
@@ -487,18 +488,16 @@ function Invoke-RemoteUpdate {
         Write-Success-Log "Switched to branch: ${Branch}"
     }
 
-    # Step 2: Run deploy.sh update with branch environment variable
+    # Step 2: Run deploy.sh update
     $deployScript = "deploy.sh"
     $argsList = @()
 
     if ($Force) { $argsList += "--force" }
     if ($Quiet) { $argsList += "--quiet" }
     if ($DebugMode) { $argsList += "--verbose" }
-    if ($Branch) { $argsList += "--branch ${Branch}" }
 
     $argsStr = $argsList -join " "
-    # Pass branch via both command line arg and environment variable for compatibility
-    $cmd = "cd ${ProjectDir}; DEPLOY_BRANCH=`"${Branch}`" bash scripts/deploy/${deployScript} update ${argsStr}"
+    $cmd = "cd ${ProjectDir}; bash scripts/deploy/${deployScript} update ${argsStr}"
 
     $result = Invoke-RemoteCommand -Server $Server -Port $Port -User $User -Password $Password -KeyPath $KeyPath -Command $cmd -Tool $script:SSHTool.Tool
 

@@ -9,9 +9,12 @@ services:
     networks:
       - app-network
     volumes:
-      - ./saves:/app/saves
+      - ${SAVES_DIR:-./docker/volumes}/saves:/app/saves
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # 配置文件优先级：部署脚本会优先从 CONFIG_DIR 同步配置到项目目录
+    # 生产环境: CONFIG_DIR/env/.env.prod → 项目目录/.env.prod
+    # 如果 CONFIG_DIR 有 .env.prod 文件，部署时会自动同步覆盖项目目录的 .env.prod
     env_file:
       - .env.prod
     environment:
@@ -68,8 +71,8 @@ services:
     image: neo4j:5.26
     container_name: graph
     volumes:
-      - ./docker/volumes/neo4j/data:/data
-      - ./docker/volumes/neo4j/logs:/var/lib/neo4j/logs
+      - ${NEO4J_DATA_DIR:-./docker/volumes/neo4j}/data:/data
+      - ${NEO4J_DATA_DIR:-./docker/volumes/neo4j}/logs:/var/lib/neo4j/logs
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:7474 || exit 1"]
       interval: 20s
@@ -94,7 +97,7 @@ services:
       - ETCD_QUOTA_BACKEND_BYTES=4294967296
       - ETCD_SNAPSHOT_COUNT=50000
     volumes:
-      - ./docker/volumes/milvus/etcd:/etcd
+      - ${MILVUS_DATA_DIR:-./docker/volumes/milvus}/etcd:/etcd
     command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
     healthcheck:
       test: ["CMD", "etcdctl", "endpoint", "health"]
@@ -113,8 +116,8 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
     volumes:
-      - ./docker/volumes/milvus/minio:/minio_data
-      - ./docker/volumes/milvus/minio_config:/root/.minio
+      - ${MILVUS_DATA_DIR:-./docker/volumes/milvus}/minio:/minio_data
+      - ${MILVUS_DATA_DIR:-./docker/volumes/milvus}/minio_config:/root/.minio
     command: minio server /minio_data --address 0.0.0.0:9000 --console-address 0.0.0.0:9001
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -137,8 +140,8 @@ services:
       MINIO_ADDRESS: minio:9000
       MILVUS_LOG_LEVEL: error
     volumes:
-      - ./docker/volumes/milvus/milvus:/var/lib/milvus
-      - ./docker/volumes/milvus/logs:/var/lib/milvus/logs
+      - ${MILVUS_DATA_DIR:-./docker/volumes/milvus}/milvus:/var/lib/milvus
+      - ${MILVUS_DATA_DIR:-./docker/volumes/milvus}/logs:/var/lib/milvus/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
       interval: 60s
@@ -163,7 +166,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-yuxi_know}
       - TZ=${TZ:-Asia/Shanghai}
     volumes:
-      - ./docker/volumes/postgresql:/var/lib/postgresql/data
+      - ${POSTGRES_DATA_DIR:-./docker/volumes/postgresql}:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-yuxi_know} || exit 1"]
       interval: 5s
@@ -241,7 +244,7 @@ services:
     profiles:
       - all
     volumes:
-      - ./docker/volumes/paddlex:/paddlex
+      - ${PADDLEX_DATA_DIR:-./docker/volumes/paddlex}:/paddlex
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
       interval: 20s

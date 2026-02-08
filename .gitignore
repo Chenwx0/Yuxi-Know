@@ -66,3 +66,5 @@ docs/vibe
 .cursorrules
 
 /models
+.spec-workflow/
+scripts/deploy/config/windows-deploy.conf

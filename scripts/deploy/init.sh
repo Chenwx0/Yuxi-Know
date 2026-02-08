@@ -4,7 +4,8 @@
 # 首次初始化部署脚本
 # ============================================================================
 
-set -e
+# 修复：移除 set -e，改用手动错误处理，避免静默退出
+set -u  # 只有未定义的变量会报错
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/utils/logger.sh"
@@ -94,10 +95,20 @@ init_data_volumes() {
 
     # 创建 .gitkeep 文件
     log_info "创建 .gitkeep 文件..."
-    find "$data_root" -type d -exec touch {}/.gitkeep \; 2>/dev/null || true
+    if command -v find >/dev/null 2>&1 && [ -d "$data_root" ]; then
+        find "$data_root" -type d -print0 | while IFS= read -r -d '' dir; do
+            touch "$dir/.gitkeep" 2>/dev/null || true
+        done
+        log_ok "✅ .gitkeep 文件已创建"
+    else
+        log_debug "跳过 .gitkeep 文件创建"
+    fi
 
     # 检查磁盘空间
-    check_disk_space "$data_root"
+    if ! check_disk_space "$data_root"; then
+        log_error "磁盘空间检查失败"
+        return 1
+    fi
 
     log_success "✅ 数据卷目录初始化完成！"
 }
@@ -111,23 +122,45 @@ check_disk_space() {
 
     # 相对路径转换为绝对路径
     if [[ "$mount_point" != /* ]]; then
-        mount_point="$(cd "$(dirname "$mount_point")" 2>/dev/null && pwd)/$(basename "$mount_point")"
+        local parent_dir="$(dirname "$mount_point")"
+        local base_name="$(basename "$mount_point")"
+        if cd "$parent_dir" 2>/dev/null; then
+            mount_point="$(pwd)/$base_name"
+        else
+            log_warning "无法转换为绝对路径，使用原路径: $mount_point"
+        fi
     fi
 
     # 获取挂载点
-    local df_output=$(df -P "$mount_point" 2>/dev/null | tail -1)
-    local available_mb=$(echo "$df_output" | awk '{print $4}')
-    local available_gb=$((available_mb / 1024))
+    local df_output
+    df_output=$(df -P "$mount_point" 2>&1) || {
+        log_warning "无法获取磁盘空间信息: $mount_point"
+        log_debug "df 命令输出: $df_output"
+        # 不退出，继续执行
+        return 0
+    }
+
+    local available_mb=$(echo "$df_output" | tail -1 | awk '{print $4}')
+    local available_gb=0
+
+    # 检查是否获取到有效值
+    if [[ "$available_mb" =~ ^[0-9]+$ ]]; then
+        available_gb=$((available_mb / 1024))
+    else
+        log_warning "无法解析磁盘空间值，跳过检查"
+        return 0
+    fi
 
     if [ "$available_gb" -lt "$required_space_gb" ]; then
         log_error "磁盘空间不足！"
         log_error "  要求: 最少 ${required_space_gb}GB"
         log_error "  可用: ${available_gb}GB"
         log_error "  挂载点: $mount_point"
-        exit 1
+        return 1
     fi
 
     log_ok "✅ 磁盘空间充足: ${available_gb}GB 可用"
+    return 0
 }
 
 # 检查数据卷权限

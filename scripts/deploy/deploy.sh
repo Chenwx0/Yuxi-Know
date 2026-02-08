@@ -9,10 +9,10 @@ set -e
 # 脚本目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# 加载配置和工具函数
-source "${SCRIPT_DIR}/utils/logger.sh"
+# 加载配置和工具函数（配置文件优先，确保 LOG_LEVEL 等配置生效）
 export SCRIPT_DIR
 source "${SCRIPT_DIR}/config/deploy.conf"
+source "${SCRIPT_DIR}/utils/logger.sh"
 
 # 初始化日志目录
 init_log_dir
@@ -177,6 +177,47 @@ emergency_exit() {
     exit 1
 }
 
+# 显示本次执行使用的配置及来源
+show_active_config() {
+    log_section "本次执行配置"
+
+    # 确定日志级别
+    local level_source
+    local level_value
+    if [ "$VERBOSE" = true ]; then
+        level_value="DEBUG"
+        level_source="[命令行 --verbose]"
+    elif [ "$QUIET" = true ]; then
+        level_value="WARNING"
+        level_source="[命令行 --quiet]"
+    else
+        level_value="${LOG_LEVEL:-INFO}"
+        level_source="[配置文件]"
+    fi
+    echo "  日志级别: $level_value $level_source"
+
+    # 确定分支
+    local branch_value
+    local branch_source
+    if [ -n "$BRANCH" ]; then
+        branch_value="$BRANCH"
+        branch_source="[命令行 --branch]"
+    elif [ -n "${DEPLOY_BRANCH:-}" ]; then
+        branch_value="$DEPLOY_BRANCH"
+        branch_source="[环境变量 DEPLOY_BRANCH]"
+    else
+        branch_value="${GIT_BRANCH:-默认分支}"
+        branch_source="[配置文件 GIT_BRANCH]"
+    fi
+    echo "  Git 分支: $branch_value $branch_source"
+
+    # 其他关键配置
+    echo "  项目目录: $PROJECT_DIR [配置文件]"
+    echo "  数据目录: $DATA_ROOT [配置文件]"
+
+    echo ""
+}
+
 # 确保配置文件优先级（CONFIG_DIR优先于项目目录）
 ensure_config_priority() {
     cd "${PROJECT_DIR}" 2>/dev/null || {
@@ -261,15 +302,11 @@ main() {
         esac
     done
 
+    # 显示本次使用的配置信息
+    show_active_config
+
     # 导出分支变量供子脚本使用
-    if [ -n "$BRANCH" ]; then
-        export DEPLOY_BRANCH="$BRANCH"
-        log_info "使用指定分支: $BRANCH"
-    elif [ -n "$DEPLOY_BRANCH" ]; then
-        log_info "使用环境变量分支: $DEPLOY_BRANCH"
-    else
-        log_info "使用配置文件分支: ${GIT_BRANCH:-默认分支}"
-    fi
+    export DEPLOY_BRANCH="${BRANCH:-${DEPLOY_BRANCH:-${GIT_BRANCH}}}"
 
     # 执行命令
     case "$command" in

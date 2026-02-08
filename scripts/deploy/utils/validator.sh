@@ -116,8 +116,8 @@ install_docker() {
             log_ok "✅ Docker 安装完成"
             ;;
 
-        centos|rhel|fedora)
-            log_info "安装 Docker (CentOS/RHEL/Fedora)..."
+        centos|rhel|fedora|alinux)
+            log_info "安装 Docker (CentOS/RHEL/Fedora/Alinux)..."
 
             # 卸载旧版本
             sudo yum remove -y docker docker-client docker-client-latest docker-common \
@@ -318,8 +318,8 @@ install_docker_compose_v2() {
             log_ok "✅ Docker Compose v2 安装完成"
             ;;
 
-        centos|rhel|fedora)
-            log_info "安装 Docker Compose v2 (CentOS/RHEL/Fedora)..."
+        centos|rhel|fedora|alinux)
+            log_info "安装 Docker Compose v2 (CentOS/RHEL/Fedora/Alinux)..."
 
             # 安装 docker-compose 插件
             sudo yum install -y docker-compose-plugin
@@ -419,8 +419,8 @@ install_git() {
             log_ok "✅ Git 安装完成"
             ;;
 
-        centos|rhel|fedora)
-            log_info "安装 Git (CentOS/RHEL/Fedora)..."
+        centos|rhel|fedora|alinux)
+            log_info "安装 Git (CentOS/RHEL/Fedora/Alinux)..."
             sudo yum install -y git
             log_ok "✅ Git 安装完成"
             ;;

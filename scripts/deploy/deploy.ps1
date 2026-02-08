@@ -71,12 +71,21 @@ function Load-Config {
 
                 # Override with config file values (config file has priority)
                 switch ($name) {
-                    "SSH_SERVER" { $script:Server = $value }
-                    "SSH_PORT"   { $script:Port = $value }
-                    "SSH_USER"   { $script:User = $value }
+                    "SSH_SERVER"   { $script:Server = $value }
+                    "SSH_PORT"     { $script:Port = $value }
+                    "SSH_USER"     { $script:User = $value }
                     "SSH_KEY_PATH" { $script:KeyPath = $value }
-                    "PROJECT_DIR" { $script:ProjectDir = $value }
-                    "SSH_BRANCH" { $script:Branch = $value }
+                    "PROJECT_DIR"  { $script:ProjectDir = $value }
+                    "SSH_BRANCH"   { $script:Branch = $value }
+                    "LOG_LEVEL"    {
+                        # 只在 DebugMode 未激活时才使用配置文件的日志级别
+                        if (-not $DebugMode) {
+                            $script:LOG_LEVEL = $value
+                        }
+                    }
+                    "AI_MODE"      { $script:AiMode = $value -eq "true" }
+                    "ROLLBACK_ENABLED" { $script:RollbackEnabled = $value -eq "true" }
+                    "ROLLBACK_KEEP_COUNT" { $script:RollbackKeepCount = [int]$value }
                 }
             }
         }
@@ -88,6 +97,19 @@ function Load-Config {
 # ============================================================================
 # Log Tools
 # ============================================================================
+
+# 日志级别优先级
+$script:LOG_LEVELS = @{
+    "DEBUG"    = 0
+    "INFO"     = 1
+    "SUCCESS"  = 2
+    "WARNING"  = 3
+    "ERROR"    = 4
+    "SECTION"  = 5
+}
+
+# 当前日志级别（默认 INFO，稍后会被配置文件覆盖）
+$script:LOG_LEVEL = "INFO"
 
 $COLORS = @{
     "DEBUG"    = "Cyan"
@@ -108,7 +130,22 @@ function Write-Log {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $color = $COLORS[$Level]
 
-    if ($Quiet -and ($Level -ne "ERROR" -and $Level -ne "WARNING")) {
+    # 根据 Quiet 参数调整日志级别（优先级最高）
+    if ($Quiet) {
+        $script:LOG_LEVEL = "WARNING"
+        if ($Level -ne "ERROR" -and $Level -ne "WARNING") {
+            return
+        }
+    }
+    # 根据 DebugMode 参数调整日志级别
+    elseif ($DebugMode) {
+        $script:LOG_LEVEL = "DEBUG"
+    }
+
+    # 日志级别过滤（基于配置文件中的 LOG_LEVEL）
+    $currentLevel = $script:LOG_LEVELS[$script:LOG_LEVEL]
+    $targetLevel = $script:LOG_LEVELS[$Level]
+    if ($targetLevel -lt $currentLevel) {
         return
     }
 
@@ -442,7 +479,11 @@ function Invoke-RemoteInit {
 
     # Step 3: Run the init.sh script with branch environment variable
     Write-Info-Log "Step 3: Running initialization script"
-    $cmd = "cd ${ProjectDir}; DEPLOY_BRANCH=`"${Branch}`" bash scripts/deploy/init.sh"
+    if ($Branch) {
+        $cmd = "cd ${ProjectDir} && export DEPLOY_BRANCH=$Branch && bash scripts/deploy/init.sh"
+    } else {
+        $cmd = "cd ${ProjectDir}; bash scripts/deploy/init.sh"
+    }
 
     # Note: We pass the branch via DEPLOY_BRANCH environment variable.
     # The bash script will use this in priority over the config file.
@@ -498,7 +539,11 @@ function Invoke-RemoteUpdate {
 
     $argsStr = $argsList -join " "
     # Pass branch via both command line arg and environment variable for compatibility
-    $cmd = "cd ${ProjectDir}; DEPLOY_BRANCH=`"${Branch}`" bash scripts/deploy/${deployScript} update ${argsStr}"
+    if ($Branch) {
+        $cmd = "cd ${ProjectDir} && export DEPLOY_BRANCH=$Branch && bash scripts/deploy/${deployScript} update ${argsStr}"
+    } else {
+        $cmd = "cd ${ProjectDir}; bash scripts/deploy/${deployScript} update ${argsStr}"
+    }
 
     $result = Invoke-RemoteCommand -Server $Server -Port $Port -User $User -Password $Password -KeyPath $KeyPath -Command $cmd -Tool $script:SSHTool.Tool
 
@@ -616,6 +661,50 @@ function Invoke-RemoteData {
     if ($result.Output) {
         Write-Host $result.Output
     }
+}
+function Show-ActiveConfig {
+    Write-Section-Log "本次执行配置"
+
+    # 确定日志级别
+    $levelValue = ""
+    $levelSource = ""
+    if ($Quiet.IsPresent) {
+        $levelValue = "WARNING"
+        $levelSource = "[命令行 -Quiet]"
+    }
+    elseif ($DebugMode.IsPresent) {
+        $levelValue = "DEBUG"
+        $levelSource = "[命令行 -DebugMode]"
+    }
+    else {
+        $levelValue = $script:LOG_LEVEL
+        $levelSource = "[配置文件]"
+    }
+    Write-Host "  日志级别: $levelValue $levelSource" -ForegroundColor Cyan
+
+    # 确定分支
+    $branchValue = ""
+    $branchSource = ""
+    if ($Branch) {
+        $branchValue = $Branch
+        $branchSource = "[命令行 -Branch]"
+    }
+    elseif ($script:Branch) {
+        $branchValue = $script:Branch
+        $branchSource = "[配置文件 SSH_BRANCH]"
+    }
+    else {
+        $branchValue = "默认分支"
+        $branchSource = "[Git 仓库]"
+    }
+    Write-Host "  Git 分支: $branchValue $branchSource" -ForegroundColor Cyan
+
+    # 其他关键配置
+    Write-Host "  服务器: ${Server}:${Port} [命令行/配置文件]" -ForegroundColor Cyan
+    Write-Host "  项目目录: ${ProjectDir} [命令行/配置文件]" -ForegroundColor Cyan
+    Write-Host "  配置文件: ${ConfigFile}" -ForegroundColor Cyan
+
+    Write-Host ""
 }
 
 # ============================================================================
@@ -802,6 +891,9 @@ function Main {
         if ($script:ProjectDir) { $ProjectDir = $script:ProjectDir }
         if ($script:Branch) { $Branch = $script:Branch }
     }
+
+    # 显示本次使用的配置信息
+    Show-ActiveConfig
 
     # Display configuration (including branch info)
     Write-Verbose "Server: ${Server}:${Port}"

@@ -41,7 +41,7 @@ scripts/deploy/
 
 ```bash
 # 克隆仓库（如果未安装 Git，可以使用 wget/curl 下载）
-git clone https://github.com/xerrors/Yuxi-Know.git
+git clone https://github.com/Chenwx0/Yuxi-Know.git
 cd Yuxi-Know
 
 # 执行初始化（会自动检测并提示安装缺失的依赖）
@@ -81,7 +81,7 @@ Yuxi-Know 需要 Docker 来运行容器化服务。
 
 ```bash
 # 克隆仓库
-git clone https://github.com/xerrors/Yuxi-Know.git
+git clone https://github.com/Chenwx0/Yuxi-Know.git
 cd Yuxi-Know
 
 # 执行初始化
@@ -124,7 +124,7 @@ bash scripts/deploy/deploy.sh init --force
 📍 项目信息:
   项目目录: /opt/yuxi-know
   数据目录: ./data-volume
-  Git 仓库: https://github.com/xerrors/Yuxi-Know.git
+  Git 仓库: https://github.com/Chenwx0/Yuxi-Know.git
   Git 分支: main
 
 🌐 访问地址:
@@ -390,7 +390,7 @@ bash scripts/deploy/deploy.sh data migrate
 # ============================ 项目配置 ============================
 PROJECT_NAME="Yuxi-Know"
 PROJECT_DIR="/opt/yuxi-know"
-GIT_REPO="https://github.com/xerrors/Yuxi-Know.git"
+GIT_REPO="https://github.com/Chenwx0/Yuxi-Know.git"
 GIT_BRANCH="main"
 
 # ============================ 数据卷配置 ============================

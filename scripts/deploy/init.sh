@@ -232,16 +232,25 @@ configure_firewall() {
     local postgres_port=$(grep "^POSTGRES_PORT=" .env 2>/dev/null | cut -d'=' -f2)
     postgres_port=${postgres_port:-5432}  # 默认 5432
 
-    # 定义需要开放的端口
-    local ports=("80/tcp" "443/tcp")
+    # 调试日志：确认端口配置
+    log_info "检测到 PostgreSQL 端口配置: ${postgres_port}"
+    if [ "$postgres_port" != "5432" ]; then
+        log_info "使用自定义端口 ${postgres_port}（非默认 5432）"
+    fi
 
-    # 可选端口（仅在交互模式下询问，或通过环境变量控制）
+    # 定义需要开放的基础端口（核心服务）
+    local ports=(
+        "80/tcp"                  # HTTP
+        "443/tcp"                 # HTTPS
+        "${postgres_port}/tcp"    # PostgreSQL（从 .env 读取，核心数据库）
+    )
+
+    # 可选端口（仅在 OPEN_ALL_PORTS=true 时开放）
     local optional_ports=()
     if [[ "${OPEN_ALL_PORTS:-}" == "true" ]]; then
         local optional_ports=(
             "5173/tcp"    # 前端开发端口
             "5050/tcp"    # 后端 API
-            "${postgres_port}/tcp"    # PostgreSQL（从 .env 读取）
             "7474/tcp"    # Neo4j HTTP
             "7687/tcp"    # Neo4j Bolt
             "19530/tcp"   # Milvus
@@ -257,6 +266,15 @@ configure_firewall() {
 
         # 检查并开放端口
         local existing_ports=$(firewall-cmd --list-ports 2>/dev/null || echo "")
+
+        # 清理旧的 PostgreSQL 端口（如果配置已变更）
+        if [ "$postgres_port" != "5432" ]; then
+            if echo "$existing_ports" | grep -q "5432/tcp"; then
+                log_info "移除旧的 PostgreSQL 端口: 5432/tcp"
+                firewall-cmd --permanent --remove-port=5432/tcp >/dev/null 2>&1 || true
+            fi
+        fi
+
         for port in "${ports[@]}" "${optional_ports[@]}"; do
             if ! echo "$existing_ports" | grep -q "$port" && \
                ! echo "$existing_ports" | grep -q "${port%/*}"; then
@@ -275,6 +293,15 @@ configure_firewall() {
         ufw --force enable >/dev/null 2>&1 || true
 
         local existing_rules=$(ufw status 2>/dev/null | grep -E "^[0-9]+" | awk '{print $2}' | sort -u || echo "")
+
+        # 清理旧的 PostgreSQL 端口（如果配置已变更）
+        if [ "$postgres_port" != "5432" ]; then
+            if echo "$existing_rules" | grep -q "^5432$"; then
+                log_info "移除旧的 PostgreSQL 端口: 5432"
+                ufw delete allow 5432/tcp >/dev/null 2>&1 || true
+            fi
+        fi
+
         for port in "${ports[@]}" "${optional_ports[@]}"; do
             local port_num="${port%/*}"
             if ! echo "$existing_rules" | grep -q "$port_num"; then

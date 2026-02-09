@@ -508,9 +508,26 @@ check_env_file() {
 check_ports() {
     log_info "检查必要端口..."
 
-    # 从 .env 文件读取实际配置的 PostgreSQL 端口
-    local postgres_port=$(grep "^POSTGRES_PORT=" .env 2>/dev/null | cut -d'=' -f2)
-    postgres_port=${postgres_port:-5432}  # 默认 5432
+    # 尝试从多个位置读取 POSTGRES_PORT 配置
+    local postgres_port=""
+
+    # 1. 优先从项目目录的 .env 读取
+    if [ -f ".env" ]; then
+        postgres_port=$(grep "^POSTGRES_PORT=" .env 2>/dev/null | cut -d'=' -f2 | xargs)
+    fi
+
+    # 2. 如果项目目录 .env 不存在，从 CONFIG_DIR 读取
+    if [ -z "$postgres_port" ] && [ -n "${CONFIG_DIR:-}" ] && [ -f "${CONFIG_DIR}/env/.env" ]; then
+        postgres_port=$(grep "^POSTGRES_PORT=" "${CONFIG_DIR}/env/.env" 2>/dev/null | cut -d'=' -f2 | xargs)
+    fi
+
+    # 3. 如果都没有，使用环境变量
+    if [ -z "$postgres_port" ]; then
+        postgres_port="${POSTGRES_PORT:-}"
+    fi
+
+    # 4. 如果都没有，使用默认值 5432
+    postgres_port=${postgres_port:-5432}
 
     local ports=(
         "5050:API 服务"

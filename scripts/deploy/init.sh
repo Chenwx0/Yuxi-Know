@@ -380,18 +380,18 @@ init_deployment() {
     log_info "  数据目录: $DATA_ROOT"
     log_info "  Git 分支: $GIT_BRANCH"
 
-    # 1. 环境检查
-    log_info "执行环境检查..."
-    check_all || exit 1
-
-    # 2. 拉取代码
+    # 1. 拉取代码
     setup_repository || exit 1
 
-    # 3. 配置环境变量
+    # 2. 配置环境变量 (在检查环境之前，确保 .env 存在)
     setup_environment || exit 1
 
-    # 4. 创建数据卷目录
+    # 3. 创建数据卷目录
     init_data_volumes || exit 1
+
+    # 4. 环境检查
+    log_info "执行环境检查..."
+    check_all || exit 1
 
     # 5. 配置防火墙
     configure_firewall || true

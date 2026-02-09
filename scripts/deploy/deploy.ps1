@@ -479,14 +479,31 @@ function Invoke-RemoteInit {
 
     # Step 3: Run the init.sh script with branch environment variable
     Write-Info-Log "Step 3: Running initialization script"
-    if ($Branch) {
-        $cmd = "cd ${ProjectDir} && export DEPLOY_BRANCH=$Branch && bash scripts/deploy/init.sh"
-    } else {
-        $cmd = "cd ${ProjectDir}; bash scripts/deploy/init.sh"
+
+    # AI模式：传递非交互环境变量
+    $aiModeEnv = ""
+    if ($script:AiMode) {
+        $aiModeEnv = "export AI_MODE=true export AUTO_DEPLOY=true"
     }
 
-    # Note: We pass the branch via DEPLOY_BRANCH environment variable.
-    # The bash script will use this in priority over the config file.
+    # 防火墙配置：AI模式下根据配置决定是否开放所有端口
+    $firewallConfig = "export OPEN_ALL_PORTS="
+    if ($script:AiMode) {
+        if ($ConfigFile -and (Test-Path $ConfigFile)) {
+            $configContent = Get-Content $ConfigFile -Raw
+            if ($configContent -match 'OPEN_ALL_PORTS\s*=\s*true') {
+                $firewallConfig = "export OPEN_ALL_PORTS=true"
+            }
+        }
+    }
+
+    if ($Branch) {
+        $cmd = "cd ${ProjectDir} && export DEPLOY_BRANCH=$Branch $aiModeEnv $firewallConfig && bash scripts/deploy/init.sh"
+    } else {
+        $cmd = "cd ${ProjectDir} && export AI_MODE=true export AUTO_DEPLOY=true $firewallConfig && bash scripts/deploy/init.sh"
+    }
+
+    Write-Debug-Log "Remote cmd: $cmd"
 
     $result = Invoke-RemoteCommand -Server $Server -Port $Port -User $User -Password $Password -KeyPath $KeyPath -Command $cmd -Tool $script:SSHTool.Tool
 

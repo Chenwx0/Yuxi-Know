@@ -508,10 +508,14 @@ check_env_file() {
 check_ports() {
     log_info "检查必要端口..."
 
+    # 从 .env 文件读取实际配置的 PostgreSQL 端口
+    local postgres_port=$(grep "^POSTGRES_PORT=" .env 2>/dev/null | cut -d'=' -f2)
+    postgres_port=${postgres_port:-5432}  # 默认 5432
+
     local ports=(
         "5050:API 服务"
         "5173:Web 服务"
-        "5432:PostgreSQL"
+        "${postgres_port}:PostgreSQL"
         "7474:Neo4j HTTP"
         "7687:Neo4j Bolt"
         "9000:MinIO API"

@@ -42,9 +42,15 @@ ROLLBACK_KEEP_COUNT=5
 # ============================ AI 自动执行配置 ============================
 
 # 启用 AI 自动执行模式（无需用户交互）
-AI_MODE=false
+AI_MODE=true
 
 # ============================ 其他配置 ============================
 
 # 日志级别（DEBUG, INFO, WARNING, ERROR）
 LOG_LEVEL=INFO
+
+# 指定部署的分支，优先级比运行时传入参数低
+SSH_BRANCH=dev
+
+# 是否开放所有端口（可选，false 只开放 80/443）
+OPEN_ALL_PORTS=true

@@ -185,19 +185,22 @@ init_data_volumes() {
     done
 
     # 清理数据库目录中的非数据文件（如 .gitkeep）
-    for db_dir in "${POSTGRES_DATA_DIR}" "${NEO4J_DATA_DIR}/data" "${MILVUS_DATA_DIR}/etcd"; do
+    for db_dir in "${POSTGRES_DATA_DIR}" "${NEO4J_DATA_DIR}/data" "${MILVUS_DATA_DIR}/etcd" "${MILVUS_DATA_DIR}/milvus" "${MILVUS_DATA_DIR}/minio" "${MILVUS_DATA_DIR}/logs"; do
         if [ -d "$db_dir" ]; then
             # 检查是否是有效的数据库目录
             local is_valid=false
             [[ "$db_dir" == *"postgres"* ]] && [ -f "$db_dir/PG_VERSION" ] && is_valid=true
             [[ "$db_dir" == *"neo4j"* ]] && [ -f "$db_dir/dbms" ] && is_valid=true
             [[ "$db_dir" == *"etcd"* ]] && [ -d "$db_dir/member" ] && is_valid=true
+            [[ "$db_dir" == *"milvus"* ]] && [ -d "$db_dir/run" -o -f "$db_dir/rocksdb" ] && is_valid=true
+            [[ "$db_dir" == *"minio"* ]] && [ -d "$db_dir/.minio.sys" ] && is_valid=true
 
             # 如果目录不为空且无效，清理非数据文件
             if [ "$(ls -A "$db_dir" 2>/dev/null)" ] && [ "$is_valid" = false ]; then
                 log_info "清理 $db_dir 中的非数据文件..."
-                # 只删除非隐藏文件，保留可能的系统文件
+                # 删除所有非隐藏文件和空目录
                 find "$db_dir" -maxdepth 1 -type f \( ! -name ".*" ! -name "lost+found" \) -delete 2>/dev/null || true
+                find "$db_dir" -maxdepth 1 -type d -empty -delete 2>/dev/null || true
             fi
         fi
     done

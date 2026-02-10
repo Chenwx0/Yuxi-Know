@@ -1,4 +1,4 @@
-# ================================================================================
+﻿# ================================================================================
 # Yuxi-Know Windows Remote Deployment Script
 # Connect from Windows to Linux server for deployment
 # ================================================================================
@@ -76,7 +76,11 @@ function Load-Config {
                     "SSH_USER"     { $script:User = $value }
                     "SSH_KEY_PATH" { $script:KeyPath = $value }
                     "PROJECT_DIR"  { $script:ProjectDir = $value }
-                    "SSH_BRANCH"   { $script:Branch = $value }
+                    "GIT_BRANCH"   { $script\:GitBranch = $value }
+                    "GIT_REPO"     { $script:GitRepo = $value }
+                    "GIT_AUTH_TOKEN" { $script:GitAuthToken = $value }
+                    "GIT_USERNAME" { $script:GitUsername = $value }
+                    "GIT_PASSWORD" { $script:GitPassword = $value }
                     "LOG_LEVEL"    {
                         # 只在 DebugMode 未激活时才使用配置文件的日志级别
                         if (-not $DebugMode) {
@@ -98,8 +102,7 @@ function Load-Config {
 # Log Tools
 # ============================================================================
 
-# 日志级别优先级
-$script:LOG_LEVELS = @{
+# 日志级别优先�?$LogLevelValues = @{
     "DEBUG"    = 0
     "INFO"     = 1
     "SUCCESS"  = 2
@@ -107,8 +110,9 @@ $script:LOG_LEVELS = @{
     "ERROR"    = 4
     "SECTION"  = 5
 }
+$script:LOG_LEVELS = $LogLevelValues
 
-# 当前日志级别（默认 INFO，稍后会被配置文件覆盖）
+# 当前日志级别（默�?INFO，稍后会被配置文件覆盖）
 $script:LOG_LEVEL = "INFO"
 
 $COLORS = @{
@@ -142,9 +146,8 @@ function Write-Log {
         $script:LOG_LEVEL = "DEBUG"
     }
 
-    # 日志级别过滤（基于配置文件中的 LOG_LEVEL）
-    $currentLevel = $script:LOG_LEVELS[$script:LOG_LEVEL]
-    $targetLevel = $script:LOG_LEVELS[$Level]
+    # 日志级别过滤（基于配置文件中�?LOG_LEVEL�?    $currentLevel = $LogLevelValues[$script:LOG_LEVEL]
+    $targetLevel = $LogLevelValues[$Level]
     if ($targetLevel -lt $currentLevel) {
         return
     }
@@ -336,9 +339,9 @@ function Invoke-RemoteInit {
     Write-Info-Log "Project dir: $ProjectDir"
 
     # Set branch from config if not provided via command-line
-    if (-not $Branch -and $script:Branch) {
-        Write-Info-Log "Using branch from config file: ${script:Branch}"
-        $Branch = $script:Branch
+    if (-not $Branch -and $script\:GitBranch) {
+        Write-Info-Log "Using branch from config file: ${script\:GitBranch}"
+        $Branch = $script\:GitBranch
     }
 
     # Step 0: Check if Git is installed
@@ -475,10 +478,25 @@ function Invoke-RemoteInit {
             exit 1
         }
         Write-Success-Log "Switched to branch: ${Branch}"
+    # Step 3: Run the init.sh script with Git configuration via environment variables
+    Write-Info-Log "Step 3: Running initialization script"
+
+    # 检查必须配�?GIT_REPO
+    if (-not $script:GitRepo) {
+        Write-Error-Log "GIT_REPO not configured! Please set it in windows-deploy.conf."
+        exit 1
     }
 
-    # Step 3: Run the init.sh script with branch environment variable
-    Write-Info-Log "Step 3: Running initialization script"
+    $gitEnv = "export GIT_REPO='$($script:GitRepo)'; export GIT_BRANCH='$($script:GitBranch)'"
+    if ($script:GitAuthToken) {
+        $gitEnv = "${gitEnv} export GIT_AUTH_TOKEN='$($script:GitAuthToken)'"
+    }
+    if ($script:GitUsername) {
+        $gitEnv = "${gitEnv} export GIT_USERNAME='$($script:GitUsername)'"
+    }
+    if ($script:GitPassword) {
+        $gitEnv = "${gitEnv} export GIT_PASSWORD='$($script:GitPassword)'"
+    }
 
     # AI模式：传递非交互环境变量
     $aiModeEnv = ""
@@ -486,8 +504,7 @@ function Invoke-RemoteInit {
         $aiModeEnv = "export AI_MODE=true export AUTO_DEPLOY=true"
     }
 
-    # 防火墙配置：AI模式下根据配置决定是否开放所有端口
-    $firewallConfig = "export OPEN_ALL_PORTS="
+    # 防火墙配置：AI模式下根据配置决定是否开放所有端�?    $firewallConfig = "export OPEN_ALL_PORTS="
     if ($script:AiMode) {
         if ($ConfigFile -and (Test-Path $ConfigFile)) {
             $configContent = Get-Content $ConfigFile -Raw
@@ -498,9 +515,9 @@ function Invoke-RemoteInit {
     }
 
     if ($Branch) {
-        $cmd = "cd ${ProjectDir} && export DEPLOY_BRANCH=$Branch $aiModeEnv $firewallConfig && bash scripts/deploy/init.sh"
+        $cmd = "cd ${ProjectDir} && export DEPLOY_BRANCH=$Branch ${gitEnv} ${aiModeEnv} ${firewallConfig} && bash scripts/deploy/init.sh"
     } else {
-        $cmd = "cd ${ProjectDir} && export AI_MODE=true export AUTO_DEPLOY=true $firewallConfig && bash scripts/deploy/init.sh"
+        $cmd = "cd ${ProjectDir} && ${gitEnv} ${aiModeEnv} ${firewallConfig} && bash scripts/deploy/init.sh"
     }
 
     Write-Debug-Log "Remote cmd: $cmd"
@@ -532,10 +549,27 @@ function Invoke-RemoteUpdate {
     Write-Section-Log "Execute remote update deployment"
     Write-Info-Log "Project dir: $ProjectDir"
 
+    # 检查必须配�?GIT_REPO
+    if (-not $script:GitRepo) {
+        Write-Error-Log "GIT_REPO not configured! Please set it in windows-deploy.conf."
+        exit 1
+    }
+
+    $gitEnv = "export GIT_REPO='$($script:GitRepo)'; export GIT_BRANCH='$($script:GitBranch)'"
+    if ($script:GitAuthToken) {
+        $gitEnv = "${gitEnv} export GIT_AUTH_TOKEN='$($script:GitAuthToken)'"
+    }
+    if ($script:GitUsername) {
+        $gitEnv = "${gitEnv} export GIT_USERNAME='$($script:GitUsername)'"
+    }
+    if ($script:GitPassword) {
+        $gitEnv = "${gitEnv} export GIT_PASSWORD='$($script:GitPassword)'"
+    }
+
     # Step 1: If Branch is specified, switch to that branch first
     if ($Branch) {
         Write-Info-Log "Switching to branch: ${Branch}"
-        $checkoutCmd = "cd ${ProjectDir} && git fetch origin && git checkout ${Branch} && git pull origin ${Branch}"
+        $checkoutCmd = "cd ${ProjectDir} && ${gitEnv} git fetch origin && git checkout ${Branch} && ${gitEnv} git pull origin ${Branch}"
         $checkoutResult = Invoke-RemoteCommand -Server $Server -Port $Port -User $User -Password $Password -KeyPath $KeyPath -Command $checkoutCmd -Tool $script:SSHTool.Tool
         if (-not $checkoutResult.Success) {
             Write-Error-Log "Failed to switch to branch: ${Branch}"
@@ -557,9 +591,9 @@ function Invoke-RemoteUpdate {
     $argsStr = $argsList -join " "
     # Pass branch via both command line arg and environment variable for compatibility
     if ($Branch) {
-        $cmd = "cd ${ProjectDir} && export DEPLOY_BRANCH=$Branch && bash scripts/deploy/${deployScript} update ${argsStr}"
+        $cmd = "cd ${ProjectDir} && export DEPLOY_BRANCH=$Branch ${gitEnv} && bash scripts/deploy/${deployScript} update ${argsStr}"
     } else {
-        $cmd = "cd ${ProjectDir}; bash scripts/deploy/${deployScript} update ${argsStr}"
+        $cmd = "cd ${ProjectDir} && ${gitEnv} && bash scripts/deploy/${deployScript} update ${argsStr}"
     }
 
     $result = Invoke-RemoteCommand -Server $Server -Port $Port -User $User -Password $Password -KeyPath $KeyPath -Command $cmd -Tool $script:SSHTool.Tool
@@ -687,11 +721,11 @@ function Show-ActiveConfig {
     $levelSource = ""
     if ($Quiet.IsPresent) {
         $levelValue = "WARNING"
-        $levelSource = "[命令行 -Quiet]"
+        $levelSource = "[命令�?-Quiet]"
     }
     elseif ($DebugMode.IsPresent) {
         $levelValue = "DEBUG"
-        $levelSource = "[命令行 -DebugMode]"
+        $levelSource = "[命令�?-DebugMode]"
     }
     else {
         $levelValue = $script:LOG_LEVEL
@@ -704,11 +738,11 @@ function Show-ActiveConfig {
     $branchSource = ""
     if ($Branch) {
         $branchValue = $Branch
-        $branchSource = "[命令行 -Branch]"
+        $branchSource = "[命令�?-Branch]"
     }
-    elseif ($script:Branch) {
-        $branchValue = $script:Branch
-        $branchSource = "[配置文件 SSH_BRANCH]"
+    elseif ($script\:GitBranch) {
+        $branchValue = $script\:GitBranch
+        $branchSource = "[配置文件 GIT_BRANCH]"
     }
     else {
         $branchValue = "默认分支"
@@ -717,8 +751,8 @@ function Show-ActiveConfig {
     Write-Host "  Git 分支: $branchValue $branchSource" -ForegroundColor Cyan
 
     # 其他关键配置
-    Write-Host "  服务器: ${Server}:${Port} [命令行/配置文件]" -ForegroundColor Cyan
-    Write-Host "  项目目录: ${ProjectDir} [命令行/配置文件]" -ForegroundColor Cyan
+    Write-Host "  服务�? ${Server}:${Port} [命令�?配置文件]" -ForegroundColor Cyan
+    Write-Host "  项目目录: ${ProjectDir} [命令�?配置文件]" -ForegroundColor Cyan
     Write-Host "  配置文件: ${ConfigFile}" -ForegroundColor Cyan
 
     Write-Host ""
@@ -870,7 +904,7 @@ function Main {
     $script:Password = ""
     $script:KeyPath = ""
     $script:ProjectDir = "/opt/yuxi-know"
-    $script:Branch = ""
+    $script\:GitBranch = ""
 
     # Auto-detect and load config file
     if (-not $ConfigFile) {
@@ -895,7 +929,7 @@ function Main {
     if (-not $User) { $User = $script:User }
     if (-not $KeyPath) { $KeyPath = $script:KeyPath }
     if (-not $ProjectDir) { $ProjectDir = $script:ProjectDir }
-    if (-not $Branch) { $Branch = $script:Branch }
+    if (-not $Branch) { $Branch = $script\:GitBranch }
 
     # If still missing required parameters, prompt interactively
     if (-not $Server -or -not $User) {
@@ -906,11 +940,10 @@ function Main {
         if ($script:User) { $User = $script:User }
         if ($script:KeyPath) { $KeyPath = $script:KeyPath }
         if ($script:ProjectDir) { $ProjectDir = $script:ProjectDir }
-        if ($script:Branch) { $Branch = $script:Branch }
+        if ($script\:GitBranch) { $Branch = $script\:GitBranch }
     }
 
-    # 显示本次使用的配置信息
-    Show-ActiveConfig
+    # 显示本次使用的配置信�?    Show-ActiveConfig
 
     # Display configuration (including branch info)
     Write-Verbose "Server: ${Server}:${Port}"

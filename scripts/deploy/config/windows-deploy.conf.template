@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 # Yuxi-Know Windows 远程部署配置文件模板
 # ================================================================================
 # 说明：
@@ -31,6 +31,32 @@ SSH_PASSWORD=
 # 远程项目目录
 PROJECT_DIR=/opt/yuxi-know
 
+# ============================ Git 配置 ============================
+
+# Git 仓库地址（必需）
+GIT_REPO=https://github.com/Chenwx0/Yuxi-Know.git
+
+# Git 分支（必需）
+GIT_BRANCH=dev
+
+# Git 认证信息（仅通过此配置文件配置，将自动通过环境变量传递到远程服务器）
+
+# 方式1: Personal Access Token（推荐，GitHub/GitLab 等都支持）
+# 获取方式:
+#   GitHub: Settings -> Developer settings -> Personal access tokens -> Tokens (classic)
+#   GitLab: User Settings -> Access Tokens
+GIT_AUTH_TOKEN=
+
+# 方式2: 使用 SSH URL（需要服务器配置 SSH 密钥）
+# 修改 GIT_REPO 为 SSH 格式，例如:
+#   GIT_REPO=git@github.com:Chenwx0/Yuxi-Know.git
+# 然后确保服务器已配置正确的 SSH 密钥
+# 此时不需要设置 GIT_AUTH_TOKEN、GIT_USERNAME、GIT_PASSWORD
+
+# 方式3: 用户名密码（不推荐，仅用于测试）
+GIT_USERNAME=
+GIT_PASSWORD=
+
 # ============================ 回滚配置 ============================
 
 # 是否启用自动回滚
@@ -48,9 +74,6 @@ AI_MODE=true
 
 # 日志级别（DEBUG, INFO, WARNING, ERROR）
 LOG_LEVEL=INFO
-
-# 指定部署的分支，优先级比运行时传入参数低
-SSH_BRANCH=dev
 
 # 是否开放所有端口（可选，false 只开放 80/443）
 OPEN_ALL_PORTS=true

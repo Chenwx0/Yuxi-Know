@@ -49,12 +49,66 @@ done
 setup_repository() {
     log_section "获取代码仓库"
 
+    # 检查必需的环境变量
+    if [ -z "${GIT_REPO:-}" ]; then
+        log_error "未设置 GIT_REPO 环境变量！"
+        log_info "请运行以下命令后再试："
+        log_info "  export GIT_REPO=\"https://github.com/Chenwx0/Yuxi-Know.git\""
+        log_info ""
+        log_info "或者在 ~/.bashrc 或 /etc/environment 中设置"
+        exit 1
+    fi
+
+    if [ -z "${GIT_BRANCH:-}" ]; then
+        log_error "未设置 GIT_BRANCH 环境变量！"
+        log_info "请运行以下命令后再试："
+        log_info "  export GIT_BRANCH=\"dev\""
+        log_info ""
+        log_info "或者在 ~/.bashrc 或 /etc/environment 中设置"
+        exit 1
+    fi
+
     local project_dir="${PROJECT_DIR}"
     mkdir -p "$(dirname "$project_dir")"
+
+    # 处理 Git 认证
+    local auth_url=""
+    if [ -n "${GIT_AUTH_TOKEN:-}" ]; then
+        # 使用 Personal Access Token
+        if [[ "$GIT_REPO" =~ ^https://.* ]]; then
+            # 替换 URL 中的认证信息
+            auth_url=$(echo "$GIT_REPO" | sed "s|https://|https://${GIT_AUTH_TOKEN}@|")
+            log_info "使用 Personal Access Token 认证"
+        fi
+    elif [[ "$GIT_REPO" =~ ^git@.* ]]; then
+        # 使用 SSH 格式，依赖 SSH 密钥配置
+        log_info "使用 SSH 认证（确保服务器已配置 SSH 密钥）"
+        auth_url="$GIT_REPO"
+    elif [ -n "${GIT_USERNAME:-}" ] && [ -n "${GIT_PASSWORD:-}" ]; then
+        # 使用用户名密码
+        if [[ "$GIT_REPO" =~ ^https://.* ]]; then
+            auth_url=$(echo "$GIT_REPO" | sed "s|https://|https://${GIT_USERNAME}:${GIT_PASSWORD}@|")
+            log_info "使用用户名密码认证"
+        fi
+    else
+        # 无认证，使用原始 URL
+        auth_url="$GIT_REPO"
+    fi
+
+    # 清理敏感信息后显示 URL
+    local display_url=$(echo "$auth_url" | sed -E 's|https://[^@]+@|https://***@|')
+    log_info "  仓库: $display_url"
+    log_info "  分支: $GIT_BRANCH"
 
     if [ -d "$project_dir/.git" ]; then
         log_info "代码仓库已存在，拉取最新代码..."
         cd "$project_dir"
+
+        # 更新 remote URL（处理认证变更）
+        if [ "$auth_url" != "$GIT_REPO" ]; then
+            log_debug "更新 remote URL"
+            git remote set-url origin "$auth_url"
+        fi
 
         # 检查并切换分支
         local current_branch=$(git branch --show-current)
@@ -71,12 +125,26 @@ setup_repository() {
         git fetch origin "$GIT_BRANCH"
         git reset --hard "origin/$GIT_BRANCH"
 
+        # 如果之前修改了 remote URL，恢复为原始 URL（避免泄露 token）
+        if [ "$auth_url" != "$GIT_REPO" ]; then
+            git remote set-url origin "$GIT_REPO"
+        fi
+
     else
         log_info "克隆代码仓库..."
-        log_info "  仓库: $GIT_REPO"
-        log_info "  分支: $GIT_BRANCH"
-        git clone -b "$GIT_BRANCH" "$GIT_REPO" "$project_dir"
+        if ! git clone -b "$GIT_BRANCH" "$auth_url" "$project_dir" 2>&1; then
+            log_error "克隆失败！请检查："
+            log_error "1. 仓库地址是否正确: $display_url"
+            log_error "2. 认证信息是否配置正确"
+            log_error "3. 网络连接是否正常"
+            exit 1
+        fi
         cd "$project_dir"
+
+        # 克隆完成后恢复 remote URL
+        if [ "$auth_url" != "$GIT_REPO" ]; then
+            git remote set-url origin "$GIT_REPO"
+        fi
     fi
 
     log_ok "✅ 代码准备完成"

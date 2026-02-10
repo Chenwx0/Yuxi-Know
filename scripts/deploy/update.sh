@@ -90,6 +90,59 @@ run_backup() {
     fi
 }
 
+# 处理 Git 认证 URL
+get_auth_url() {
+    # 检查必需的环境变量
+    if [ -z "${GIT_REPO:-}" ]; then
+        log_error "未设置 GIT_REPO 环境变量！"
+        log_info "请运行以下命令后再试："
+        log_info "  export GIT_REPO=\"https://github.com/Chenwx0/Yuxi-Know.git\""
+        exit 1
+    fi
+
+    if [ -z "${GIT_BRANCH:-}" ]; then
+        log_error "未设置 GIT_BRANCH 环境变量！"
+        log_info "请运行以下命令后再试："
+        log_info "  export GIT_BRANCH=\"dev\""
+        exit 1
+    fi
+
+    local auth_url="${GIT_REPO}"
+
+    if [ -n "${GIT_AUTH_TOKEN:-}" ]; then
+        # 使用 Personal Access Token
+        if [[ "$GIT_REPO" =~ ^https://.* ]]; then
+            auth_url=$(echo "$GIT_REPO" | sed "s|https://|https://${GIT_AUTH_TOKEN}@|")
+        fi
+    elif [ -n "${GIT_USERNAME:-}" ] && [ -n "${GIT_PASSWORD:-}" ]; then
+        # 使用用户名密码
+        if [[ "$GIT_REPO" =~ ^https://.* ]]; then
+            auth_url=$(echo "$GIT_REPO" | sed "s|https://|https://${GIT_USERNAME}:${GIT_PASSWORD}@|")
+        fi
+    fi
+
+    echo "$auth_url"
+}
+
+# 执行带认证的 Git 操作
+git_with_auth() {
+    local auth_url=$(get_auth_url)
+    local original_remote=$(git remote get-url origin 2>/dev/null || echo "")
+
+    # 临时设置认证 URL
+    if [ "$auth_url" != "$GIT_REPO" ] && [ -n "$original_remote" ]; then
+        git remote set-url origin "$auth_url"
+    fi
+
+    # 执行 Git 命令
+    "$@"
+
+    # 恢复原始 URL
+    if [ "$auth_url" != "$GIT_REPO" ] && [ -n "$original_remote" ]; then
+        git remote set-url origin "$original_remote"
+    fi
+}
+
 # 检查代码更新
 check_updates() {
     log_info "检查代码更新..."
@@ -99,9 +152,9 @@ check_updates() {
     # 记录当前提交
     CURRENT_COMMIT=$(git rev-parse HEAD)
 
-    # 拉取最新代码
+    # 拉取最新代码（带认证）
     log_info "拉取最新代码..."
-    git fetch origin "${GIT_BRANCH}"
+    git_with_auth git fetch origin "${GIT_BRANCH}"
 
     LATEST_COMMIT=$(git rev-parse "origin/${GIT_BRANCH}")
 
@@ -194,7 +247,7 @@ apply_updates() {
     ensure_config_priority
 
     log_info "切换到最新版本..."
-    git pull origin "${GIT_BRANCH}"
+    git_with_auth git pull origin "${GIT_BRANCH}"
 
     # 检查配置文件变更
     if git diff --name-only "$CURRENT_COMMIT" "$LATEST_COMMIT" | grep -q "\.env\.template"; then
@@ -479,8 +532,8 @@ update_deployment() {
         if [ "$current_branch" != "$GIT_BRANCH" ]; then
             log_info "切换到指定分支: ${GIT_BRANCH}"
 
-            # 尝试获取远程分支信息
-            git fetch origin "$GIT_BRANCH" 2>/dev/null || true
+            # 尝试获取远程分支信息（带认证）
+            git_with_auth git fetch origin "$GIT_BRANCH" 2>/dev/null || true
 
             # 检查远程是否存在该分支
             if git rev-parse --verify "origin/${GIT_BRANCH}" >/dev/null 2>&1; then

@@ -3,6 +3,11 @@
 # Connect from Windows to Linux server for deployment
 # ================================================================================
 
+# 设置 UTF-8 编码以正确处理中文输出
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [Console]::OutputEncoding
+[System.Console]::InputEncoding = [System.Text.Encoding]::UTF8
+
 param(
     [Parameter(Position = 0, Mandatory = $false)]
     [ValidateSet("init", "update", "health", "backup", "rollback", "status", "data")]
@@ -76,7 +81,7 @@ function Load-Config {
                     "SSH_USER"     { $script:User = $value }
                     "SSH_KEY_PATH" { $script:KeyPath = $value }
                     "PROJECT_DIR"  { $script:ProjectDir = $value }
-                    "GIT_BRANCH"   { $script\:GitBranch = $value }
+                    "GIT_BRANCH"   { $script:GitBranch = $value }
                     "GIT_REPO"     { $script:GitRepo = $value }
                     "GIT_AUTH_TOKEN" { $script:GitAuthToken = $value }
                     "GIT_USERNAME" { $script:GitUsername = $value }
@@ -90,6 +95,8 @@ function Load-Config {
                     "AI_MODE"      { $script:AiMode = $value -eq "true" }
                     "ROLLBACK_ENABLED" { $script:RollbackEnabled = $value -eq "true" }
                     "ROLLBACK_KEEP_COUNT" { $script:RollbackKeepCount = [int]$value }
+                    "ENV_FILE_LOCAL" { $script:EnvFileLocal = $value }
+                    "ENV_FILE_REMOTE" { $script:EnvFileRemote = $value }
                 }
             }
         }
@@ -102,7 +109,8 @@ function Load-Config {
 # Log Tools
 # ============================================================================
 
-# 日志级别优先�?$LogLevelValues = @{
+# 日志级别优先级
+$LogLevelValues = @{
     "DEBUG"    = 0
     "INFO"     = 1
     "SUCCESS"  = 2
@@ -112,7 +120,7 @@ function Load-Config {
 }
 $script:LOG_LEVELS = $LogLevelValues
 
-# 当前日志级别（默�?INFO，稍后会被配置文件覆盖）
+# 当前日志级别（默认INFO，稍后会被配置文件覆盖）
 $script:LOG_LEVEL = "INFO"
 
 $COLORS = @{
@@ -146,7 +154,8 @@ function Write-Log {
         $script:LOG_LEVEL = "DEBUG"
     }
 
-    # 日志级别过滤（基于配置文件中�?LOG_LEVEL�?    $currentLevel = $LogLevelValues[$script:LOG_LEVEL]
+    # 日志级别过滤（基于配置文件中的 LOG_LEVEL）
+    $currentLevel = $LogLevelValues[$script:LOG_LEVEL]
     $targetLevel = $LogLevelValues[$Level]
     if ($targetLevel -lt $currentLevel) {
         return
@@ -189,7 +198,13 @@ function Test-SSHTool {
     $sshPath = Get-Command ssh -ErrorAction SilentlyContinue
 
     if ($sshPath) {
+        $scpPath = Get-Command scp -ErrorAction SilentlyContinue
+        if (-not $scpPath) {
+            Write-Error-Log "SCP command not found! OpenSSH incomplete."
+            return @{ Available = $false }
+        }
         Write-Verbose "Found SSH: $($sshPath.Source)"
+        Write-Verbose "Found SCP: $($scpPath.Source)"
         return @{
             Available = $true
             Tool      = "ssh"
@@ -199,7 +214,13 @@ function Test-SSHTool {
 
     $plinkPath = Get-Command plink -ErrorAction SilentlyContinue
     if ($plinkPath) {
+        $pscpPath = Get-Command pscp -ErrorAction SilentlyContinue
+        if (-not $pscpPath) {
+            Write-Error-Log "PSCP command not found! PuTTY incomplete."
+            return @{ Available = $false }
+        }
         Write-Verbose "Found Plink: $($plinkPath.Source)"
+        Write-Verbose "Found PSCP: $($pscpPath.Source)"
         return @{
             Available = $true
             Tool      = "plink"
@@ -271,7 +292,16 @@ function Build-SSHCommand {
     }
 
     Write-Debug-Log "SSH cmd: $sshConfig"
-    return $sshConfig
+    return @{
+        Command = $sshConfig
+        Tool = $Tool
+        Server = $Server
+        Port = $Port
+        User = $User
+        KeyPath = $KeyPath
+        Password = $Password
+        RawCommand = $Command
+    }
 }
 
 function Invoke-RemoteCommand {
@@ -286,11 +316,14 @@ function Invoke-RemoteCommand {
         [switch]$ExpectFail = $false
     )
 
-    $sshCmd = Build-SSHCommand -Server $Server -Port $Port -User $User -Password $Password -KeyPath $KeyPath -Command $Command -Tool $Tool
+    $sshConfig = Build-SSHCommand -Server $Server -Port $Port -User $User -Password $Password -KeyPath $KeyPath -Command $Command -Tool $Tool
 
     Write-Debug-Log "Remote cmd: $Command"
 
     try {
+        $output = ""
+        $exitCode = 0
+
         if ($Password -and $env:AI_MODE -ne "true") {
             $securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
             $credential = New-Object System.Management.Automation.PSCredential ($User, $securePassword)
@@ -301,23 +334,141 @@ function Invoke-RemoteCommand {
                 exit 1
             }
             else {
-                $result = & plink -P $Port -pw $Password -batch "${User}@${Server}" $Command
-                $exitCode = $LASTEXITCODE
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = "plink"
+                $psi.Arguments = "-P $Port -pw $Password -batch ${User}@${Server} $Command"
+                $psi.UseShellExecute = $false
+                $psi.RedirectStandardOutput = $true
+                $psi.RedirectStandardError = $true
+                $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+                $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+                $psi.CreateNoWindow = $true
 
-                if ($exitCode -eq 0 -or $ExpectFail) {
-                    return @{ Success = $true; Output = $result; ExitCode = $exitCode }
-                }
-                else {
-                    return @{ Success = $false; Output = $result; ExitCode = $exitCode }
-                }
+                $process = New-Object System.Diagnostics.Process
+                $process.StartInfo = $psi
+                $process.Start() | Out-Null
+                $output = $process.StandardOutput.ReadToEnd() + $process.StandardError.ReadToEnd()
+                $process.WaitForExit()
+                $exitCode = $process.ExitCode
             }
         }
         else {
-            $output = Invoke-Expression $sshCmd
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = if ($Tool -eq "ssh") { "ssh" } else { "plink" }
+            $psi.Arguments = if ($sshConfig.Tool -eq "ssh") {
+                "ssh -p $Port -o StrictHostKeyChecking=no -o UserKnownHostsFile=nul -o LogLevel=ERROR $(if ($KeyPath -and (Test-Path $KeyPath)) { "-i `"$KeyPath`"" }) $(if ($env:AI_MODE -eq 'true') { '-o BatchMode=yes' }) ${User}@${Server} `"$Command`""
+            } else {
+                "plink -P $Port $(if ($KeyPath -and (Test-Path $KeyPath)) { "-i `"$KeyPath`"" }) -batch ${User}@${Server} $Command"
+            }
+            $psi.UseShellExecute = $false
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+            $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+            $psi.CreateNoWindow = $true
+
+            $process = New-Object System.Diagnostics.Process
+            $process.StartInfo = $psi
+            $process.Start() | Out-Null
+            $output = $process.StandardOutput.ReadToEnd() + $process.StandardError.ReadToEnd()
+            $process.WaitForExit()
+            $exitCode = $process.ExitCode
+        }
+
+        # 移除 ANSI 颜色码
+        $output = $output -replace '\x1b\[[0-9;]*[a-zA-Z]', ''
+
+        if ($exitCode -eq 0 -or $ExpectFail) {
+            return @{ Success = $true; Output = $output; ExitCode = $exitCode }
+        }
+        else {
+            return @{ Success = $false; Output = $output; ExitCode = $exitCode }
+        }
+    }
+    catch {
+        Write-Error-Log "Remote command failed: $_"
+        return @{ Success = $false; Output = $_.Exception.Message; ExitCode = 1 }
+    }
+}
+
+# ============================================================================
+# SCP File Upload
+# ============================================================================
+
+function Invoke-SCPUpload {
+    param(
+        [string]$LocalPath,
+        [string]$RemotePath,
+        [string]$Server,
+        [string]$Port = "22",
+        [string]$User,
+        [string]$Password,
+        [string]$KeyPath,
+        [string]$Tool = "ssh"
+    )
+
+    Write-Debug-Log "Uploading file: $LocalPath -> ${User}@${Server}:${RemotePath}"
+
+    # 验证本地文件是否存在
+    if (-not (Test-Path $LocalPath)) {
+        Write-Error-Log "Local file does not exist: $LocalPath"
+        return @{ Success = $false; Output = "Local file not found" }
+    }
+
+    try {
+        if ($Tool -eq "ssh") {
+            # 使用 scp 命令上传
+            $scpArgs = @()
+            $scpArgs += "-P", $Port
+
+            if ($KeyPath -and (Test-Path $KeyPath)) {
+                $scpArgs += "-i", "`"$KeyPath`""
+            }
+
+            $scpArgs += "-o", "StrictHostKeyChecking=no"
+            $scpArgs += "-o", "UserKnownHostsFile=nul"
+            $scpArgs += "-o", "LogLevel=ERROR"
+
+            if ($env:AI_MODE -eq "true") {
+                $scpArgs += "-o", "BatchMode=yes"
+            }
+
+            $scpArgs += "`"$LocalPath`""
+            $scpArgs += "${User}@${Server}:${RemotePath}"
+
+            Write-Debug-Log "SCP cmd: scp $($scpArgs -join ' ')"
+
+            $output = & scp @scpArgs 2>&1
             $exitCode = $LASTEXITCODE
 
-            if ($exitCode -eq 0 -or $ExpectFail) {
-                return @{ Success = $true; Output = $output; ExitCode = $exitCode }
+            if ($exitCode -eq 0) {
+                return @{ Success = $true; Output = $output }
+            }
+            else {
+                return @{ Success = $false; Output = $output; ExitCode = $exitCode }
+            }
+        }
+        elseif ($Tool -eq "plink") {
+            # 使用 pscp 命令上传
+            $pscpArgs = @()
+            $pscpArgs += "-P", $Port
+
+            if ($KeyPath -and (Test-Path $KeyPath)) {
+                $pscpArgs += "-i", "`"$KeyPath`""
+            }
+
+            $pscpArgs += "-batch"
+
+            $pscpArgs += "`"$LocalPath`""
+            $pscpArgs += "${User}@${Server}:${RemotePath}"
+
+            Write-Debug-Log "PSCP cmd: pscp $($pscpArgs -join ' ')"
+
+            $output = & pscp @pscpArgs 2>&1
+            $exitCode = $LASTEXITCODE
+
+            if ($exitCode -eq 0) {
+                return @{ Success = $true; Output = $output }
             }
             else {
                 return @{ Success = $false; Output = $output; ExitCode = $exitCode }
@@ -325,7 +476,7 @@ function Invoke-RemoteCommand {
         }
     }
     catch {
-        Write-Error-Log "Remote command failed: $_"
+        Write-Error-Log "File upload failed: $_"
         return @{ Success = $false; Output = $_.Exception.Message; ExitCode = 1 }
     }
 }
@@ -339,9 +490,9 @@ function Invoke-RemoteInit {
     Write-Info-Log "Project dir: $ProjectDir"
 
     # Set branch from config if not provided via command-line
-    if (-not $Branch -and $script\:GitBranch) {
-        Write-Info-Log "Using branch from config file: ${script\:GitBranch}"
-        $Branch = $script\:GitBranch
+    if (-not $Branch -and $script:GitBranch) {
+        Write-Info-Log "Using branch from config file: ${script:GitBranch}"
+        $Branch = $script:GitBranch
     }
 
     # Step 0: Check if Git is installed
@@ -478,10 +629,51 @@ function Invoke-RemoteInit {
             exit 1
         }
         Write-Success-Log "Switched to branch: ${Branch}"
+    }
+
+    # Step 2.6: Upload .env file if configured
+    if ($script:EnvFileLocal) {
+        Write-Info-Log "Step 2.6: Uploading .env file"
+
+        # 解析远程路径
+        $remoteEnvPath = $script:EnvFileRemote
+        # 如果是相对路径，拼接项目目录
+        if (-not $remoteEnvPath.StartsWith("/")) {
+            $remoteEnvPath = "${ProjectDir}/${remoteEnvPath}"
+        }
+
+        Write-Debug-Log "Local path: $($script:EnvFileLocal)"
+        Write-Debug-Log "Remote path: ${remoteEnvPath}"
+
+        # 执行上传
+        # 确保远程目标目录存在
+        # 先获取远程文件所在目录
+        if ($remoteEnvPath -match "(.+)/[^/]+$") {
+            $remoteDir = $matches[1]
+            $mkDirCmd = "mkdir -p ${remoteDir}"
+            $mkDirResult = Invoke-RemoteCommand -Server $Server -Port $Port -User $User -Password $Password -KeyPath $KeyPath -Command $mkDirCmd -Tool $script:SSHTool.Tool
+        }
+
+        $uploadResult = Invoke-SCPUpload -LocalPath $script:EnvFileLocal -RemotePath $remoteEnvPath -Server $Server -Port $Port -User $User -Password $Password -KeyPath $KeyPath -Tool $script:SSHTool.Tool
+
+        if ($uploadResult.Success) {
+            Write-Success-Log ".env file uploaded successfully"
+        }
+        else {
+            Write-Error-Log "Failed to upload .env file"
+            Write-Info-Log "Output: $($uploadResult.Output)"
+            exit 1
+        }
+    }
+    else {
+        Write-Info-Log "No local .env file configured, skipping upload"
+        Write-Info-Log "Configure ENV_FILE_LOCAL in windows-deploy.conf to enable .env file upload"
+    }
+
     # Step 3: Run the init.sh script with Git configuration via environment variables
     Write-Info-Log "Step 3: Running initialization script"
 
-    # 检查必须配�?GIT_REPO
+    # 检查必须配置 GIT_REPO
     if (-not $script:GitRepo) {
         Write-Error-Log "GIT_REPO not configured! Please set it in windows-deploy.conf."
         exit 1
@@ -504,7 +696,8 @@ function Invoke-RemoteInit {
         $aiModeEnv = "export AI_MODE=true export AUTO_DEPLOY=true"
     }
 
-    # 防火墙配置：AI模式下根据配置决定是否开放所有端�?    $firewallConfig = "export OPEN_ALL_PORTS="
+    # 防火墙配置：AI模式下根据配置决定是否开放所有端口
+    $firewallConfig = "export OPEN_ALL_PORTS="
     if ($script:AiMode) {
         if ($ConfigFile -and (Test-Path $ConfigFile)) {
             $configContent = Get-Content $ConfigFile -Raw
@@ -549,7 +742,7 @@ function Invoke-RemoteUpdate {
     Write-Section-Log "Execute remote update deployment"
     Write-Info-Log "Project dir: $ProjectDir"
 
-    # 检查必须配�?GIT_REPO
+    # 检查必须配置 GIT_REPO
     if (-not $script:GitRepo) {
         Write-Error-Log "GIT_REPO not configured! Please set it in windows-deploy.conf."
         exit 1
@@ -721,11 +914,11 @@ function Show-ActiveConfig {
     $levelSource = ""
     if ($Quiet.IsPresent) {
         $levelValue = "WARNING"
-        $levelSource = "[命令�?-Quiet]"
+        $levelSource = "[命令 -Quiet]"
     }
     elseif ($DebugMode.IsPresent) {
         $levelValue = "DEBUG"
-        $levelSource = "[命令�?-DebugMode]"
+        $levelSource = "[命令 -DebugMode]"
     }
     else {
         $levelValue = $script:LOG_LEVEL
@@ -738,10 +931,10 @@ function Show-ActiveConfig {
     $branchSource = ""
     if ($Branch) {
         $branchValue = $Branch
-        $branchSource = "[命令�?-Branch]"
+        $branchSource = "[命令 -Branch]"
     }
-    elseif ($script\:GitBranch) {
-        $branchValue = $script\:GitBranch
+    elseif ($script:GitBranch) {
+        $branchValue = $script:GitBranch
         $branchSource = "[配置文件 GIT_BRANCH]"
     }
     else {
@@ -751,8 +944,8 @@ function Show-ActiveConfig {
     Write-Host "  Git 分支: $branchValue $branchSource" -ForegroundColor Cyan
 
     # 其他关键配置
-    Write-Host "  服务�? ${Server}:${Port} [命令�?配置文件]" -ForegroundColor Cyan
-    Write-Host "  项目目录: ${ProjectDir} [命令�?配置文件]" -ForegroundColor Cyan
+    Write-Host "  服务器: ${Server}:${Port} [命令/配置文件]" -ForegroundColor Cyan
+    Write-Host "  项目目录: ${ProjectDir} [命令/配置文件]" -ForegroundColor Cyan
     Write-Host "  配置文件: ${ConfigFile}" -ForegroundColor Cyan
 
     Write-Host ""
@@ -821,6 +1014,11 @@ Config file example (config\deploy.conf):
   SSH_USER=root
   SSH_KEY_PATH=C:\Users\user\.ssh\id_rsa
   PROJECT_DIR=/opt/yuxi-know
+  ENV_FILE_LOCAL=D:\MyData\chenwx80.CN\.env
+  ENV_FILE_REMOTE=.env
+
+Note: ENV_FILE_LOCAL enables uploading .env file during init deployment.
+      ENV_FILE_REMOTE can be relative to PROJECT_DIR or absolute path.
 
 More docs: https://github.com/xerrors/Yuxi-Know
 
@@ -904,7 +1102,7 @@ function Main {
     $script:Password = ""
     $script:KeyPath = ""
     $script:ProjectDir = "/opt/yuxi-know"
-    $script\:GitBranch = ""
+    $script:GitBranch = ""
 
     # Auto-detect and load config file
     if (-not $ConfigFile) {
@@ -929,7 +1127,7 @@ function Main {
     if (-not $User) { $User = $script:User }
     if (-not $KeyPath) { $KeyPath = $script:KeyPath }
     if (-not $ProjectDir) { $ProjectDir = $script:ProjectDir }
-    if (-not $Branch) { $Branch = $script\:GitBranch }
+    if (-not $Branch) { $Branch = $script:GitBranch }
 
     # If still missing required parameters, prompt interactively
     if (-not $Server -or -not $User) {
@@ -940,10 +1138,11 @@ function Main {
         if ($script:User) { $User = $script:User }
         if ($script:KeyPath) { $KeyPath = $script:KeyPath }
         if ($script:ProjectDir) { $ProjectDir = $script:ProjectDir }
-        if ($script\:GitBranch) { $Branch = $script\:GitBranch }
+        if ($script:GitBranch) { $Branch = $script:GitBranch }
     }
 
-    # 显示本次使用的配置信�?    Show-ActiveConfig
+    # 显示本次使用的配置信息
+    Show-ActiveConfig
 
     # Display configuration (including branch info)
     Write-Verbose "Server: ${Server}:${Port}"

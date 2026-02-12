@@ -29,7 +29,7 @@ SSH_PASSWORD=
 # ============================ 项目路径配置 ============================
 
 # 远程项目目录
-PROJECT_DIR=/opt/yuxi-know
+PROJECT_DIR=/app/yuxi-know
 
 # ============================ Git 配置 ============================
 
@@ -63,12 +63,23 @@ GIT_PASSWORD=
 ROLLBACK_ENABLED=true
 
 # 保留的历史版本数量
-ROLLBACK_KEEP_COUNT=5
+ROLLBACK_KEEP_COUNT=1
 
 # ============================ AI 自动执行配置 ============================
 
 # 启用 AI 自动执行模式（无需用户交互）
 AI_MODE=true
+
+# ============================ .env 文件配置 ============================
+
+# 本地 .env 文件路径（用于首次部署时上传到服务器）
+# Windows 路径示例: D:\MyData\chenwx80.CN\.env 或 .\.env.prod
+ENV_FILE_LOCAL=./.env
+
+# 远程服务器上 .env 文件路径（相对或绝对路径）
+# 相对于 PROJECT_DIR: .env 或 .env.prod
+# 绝对路径: /app/data/config/env/.env 或 /app/data/config/env/.env.prod
+ENV_FILE_REMOTE=/app/data/config/env/.env
 
 # ============================ 其他配置 ============================
 

@@ -353,6 +353,74 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  // SSO 单点登录相关功能
+  async function checkSSOEnabled() {
+    try {
+      const response = await fetch('/api/auth/sso/enabled')
+      const data = await response.json()
+      return data.enabled
+    } catch (error) {
+      console.error('检查 SSO 状态错误:', error)
+      return false
+    }
+  }
+
+  async function getSSOLoginUrl() {
+    try {
+      const response = await fetch('/api/auth/sso/login')
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || '获取 SSO 授权 URL 失败')
+      }
+
+      const data = await response.json()
+      return data
+    } catch (error) {
+      console.error('获取 SSO 授权 URL 错误:', error)
+      throw error
+    }
+  }
+
+  async function ssoCallback({ code, state }) {
+    try {
+      const response = await fetch('/api/auth/sso/callback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ code, state })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || 'SSO 回调处理失败')
+      }
+
+      const data = await response.json()
+
+      // 更新状态
+      token.value = data.access_token
+      userId.value = data.user_id
+      username.value = data.username
+      userIdLogin.value = data.user_id_login
+      phoneNumber.value = data.phone_number || ''
+      avatar.value = data.avatar || ''
+      userRole.value = data.role
+      departmentId.value = data.department_id || null
+      departmentName.value = data.department_name || ''
+
+      // 保存 token 到本地存储
+      localStorage.setItem('user_token', data.access_token)
+
+      return data
+    } catch (error) {
+      console.error('SSO 回调处理错误:', error)
+      throw error
+    }
+  }
+  }
+
   return {
     // 状态
     token,
@@ -383,7 +451,10 @@ export const useUserStore = defineStore('user', () => {
     validateUsernameAndGenerateUserId,
     uploadAvatar,
     getCurrentUser,
-    updateProfile
+    updateProfile,
+    checkSSOEnabled,
+    getSSOLoginUrl,
+    ssoCallback
   }
 })
 

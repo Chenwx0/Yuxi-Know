@@ -77,3 +77,44 @@ class AuthUtils:
             raise ValueError("令牌已过期")
         except jwt.InvalidTokenError:
             raise ValueError("无效的令牌")
+
+    @staticmethod
+    def parse_authorization_header(auth_header: str) -> tuple[str, str]:
+        """解析 Authorization 头，返回 (token_type, token)
+
+        Args:
+            auth_header: Authorization 头值，如 "Bearer xxx" 或 "JWTBearer xxx"
+
+        Returns:
+            (token_type, token) 元组
+
+        Examples:
+            "Bearer xxx" -> ("Bearer", "xxx")
+            "JWTBearer xxx" -> ("JWTBearer", "xxx")
+            "xxx" -> ("", "xxx")
+        """
+        if not auth_header:
+            return "", ""
+
+        parts = auth_header.split(" ", 1)
+        if len(parts) == 2:
+            return parts[0], parts[1]
+        return "", parts[0] if parts else ""
+
+    @staticmethod
+    def is_local_jwt_auth(auth_header: str) -> bool:
+        """判断是否为本地 JWT 认证模式
+
+        通过 Token 前缀判断：
+        - "JWTBearer" 或 "jwtbearer": 本地 JWT 认证
+        - "Bearer" 或 "bearer": OAuth2 认证
+        - 无前缀: 兼容模式，默认本地 JWT 认证
+
+        Args:
+            auth_header: Authorization 头值
+
+        Returns:
+            True 表示本地 JWT 认证，False 表示 OAuth2 认证
+        """
+        token_type, _ = AuthUtils.parse_authorization_header(auth_header)
+        return token_type == "JWTBearer" or token_type.lower() == "jwtbearer" or not token_type

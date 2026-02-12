@@ -17,6 +17,9 @@ PUBLIC_PATHS = [
     r"^/api/auth/token$",  # 登录
     r"^/api/auth/check-first-run$",  # 检查是否首次运行
     r"^/api/auth/initialize$",  # 初始化系统
+    r"^/api/auth/sso/login$",  # SSO 登录获取授权 URL
+    r"^/api/auth/sso/callback$",  # SSO 回调处理
+    r"^/api/auth/sso/enabled$",  # 检查 SSO 是否启用
     r"^/api$",  # Health Check
     r"^/api/system/health$",  # Health Check
     r"^/api/system/info$",  # 获取系统信息配置
@@ -41,20 +44,63 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme), db: Async
     if token is None:
         return None
 
+    # 解析 Token 类型和内容
+    token_type, actual_token = AuthUtils.parse_authorization_header(token)
+
     try:
-        # 验证token
-        payload = AuthUtils.verify_access_token(token)
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise credentials_exception
+        if AuthUtils.is_local_jwt_auth(token):
+            # 本地 JWT 验证模式
+            payload = AuthUtils.verify_access_token(actual_token)
+            user_id = payload.get("sub")
+            if user_id is None:
+                raise credentials_exception
+        else:
+            # OAuth2 Token 验证模式（Bearer 前缀）
+            from server.utils.oauth2_client import get_oauth2_client
+
+            oauth_client = get_oauth2_client()
+            if not oauth_client:
+                raise ValueError("SSO 未启用")
+
+            # 验证 Token 有效性
+            token_info = await oauth_client.introspect_token(actual_token)
+            if not token_info.get("active"):
+                raise ValueError("Token 已失效")
+
+            # 从 Token 中提取用户标识
+            user_id = token_info.get("sub") or token_info.get("user_id")
+            if user_id is None:
+                raise ValueError("Token 中缺少用户标识")
+
+            # 如果 user_id 不是整数（Token 中的 sub 通常是字符串），需要额外处理
+            # 这里假设 Token 中的 user_id 与本地 User.id 一致
+            # 实际 OAuth2 场景中，通常需要额外查找用户
+
+            # 修正：OAuth2 Token 验证后，需要根据 SSO user_id 查找本地用户
+            # 但当前模式下 SSO 登录后直接返回本地 JWT，所以 Bearer 模式实际很少使用
+            # 这里提供完整实现以支持直接使用 Bearer Token 的场景
+
+            # 获取 SSO user_id
+            sso_user_id = token_info.get("sub") or token_info.get("user_id")
+            if not sso_user_id:
+                raise ValueError("Token 中缺少用户标识")
+
+            # 查找关联的本地用户
+            from sqlalchemy import select
+
+            result = await db.execute(select(User).filter(User.user_id_sso == sso_user_id))
+            user = result.scalar_one_or_none()
+            if user is None:
+                raise credentials_exception
+
+            return user
+
     except JWTError:
         raise credentials_exception
     except ValueError as e:
-        # 捕获AuthUtils.verify_access_token可能抛出的ValueError
-        # 例如令牌过期或无效
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),  # 将错误信息直接传递给客户端
+            detail=str(e),
             headers={"WWW-Authenticate": "Bearer"},
         )
 

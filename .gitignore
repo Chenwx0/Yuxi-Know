@@ -67,4 +67,5 @@ docs/vibe
 
 /models
 .spec-workflow/
+.zcf/
 scripts/deploy/config/windows-deploy.conf

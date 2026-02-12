@@ -70,6 +70,10 @@ class User(Base):
     is_deleted = Column(Integer, nullable=False, default=0, index=True)  # 是否已删除：0=否，1=是
     deleted_at = Column(DateTime, nullable=True)  # 删除时间
 
+    # SSO 单点登录相关字段
+    user_id_sso = Column(String(100), nullable=True, index=True)  # SSO 用户的唯一标识
+    login_source = Column(String(20), nullable=False, default="local")  # 登录来源: local/sso/both
+
     # 关联操作日志
     operation_logs = relationship("OperationLog", back_populates="user", cascade="all, delete-orphan")
 

@@ -186,6 +186,12 @@
                       <span>其他登录方式</span>
                     </div>
                     <div class="login-icons">
+                      <!-- SSO 登录 -->
+                      <a-tooltip v-if="ssoEnabled" title="统一认证登录">
+                        <a-button shape="circle" class="login-icon" @click="handleSSOLogin" :loading="ssoLoading">
+                          <template #icon><thunderbolt-outlined /></template>
+                        </a-button>
+                      </a-tooltip>
                       <a-tooltip title="微信登录">
                         <a-button shape="circle" class="login-icon" @click="showDevMessage">
                           <template #icon><wechat-outlined /></template>
@@ -296,6 +302,10 @@ const healthChecking = ref(false)
 const isLocked = ref(false)
 const lockRemainingTime = ref(0)
 const lockCountdown = ref(null)
+
+// SSO 登录相关状态
+const ssoEnabled = ref(false)
+const ssoLoading = ref(false)
 
 // 登录表单
 const loginForm = reactive({
@@ -531,6 +541,35 @@ const checkServerHealth = async () => {
   }
 }
 
+// SSO 登录处理
+const handleSSOLogin = async () => {
+  try {
+    ssoLoading.value = true
+    const data = await userStore.getSSOLoginUrl()
+
+    // 保存 state 防止 CSRF 攻击
+    sessionStorage.setItem('sso_state', data.state)
+
+    // 跳转到认证中心
+    window.location.href = data.authorization_url
+  } catch (error) {
+    console.error('获取 SSO 授权 URL 失败:', error)
+    message.error('SSO 服务暂时不可用，请稍后重试')
+  } finally {
+    ssoLoading.value = false
+  }
+}
+
+// 检查 SSO 是否启用
+const checkSSOStatus = async () => {
+  try {
+    ssoEnabled.value = await userStore.checkSSOEnabled()
+  } catch (error) {
+    console.error('检查 SSO 状态失败:', error)
+    ssoEnabled.value = false
+  }
+}
+
 // 组件挂载时
 onMounted(async () => {
   // 如果已登录，跳转到首页
@@ -541,6 +580,11 @@ onMounted(async () => {
 
   // 首先检查服务器健康状态
   await checkServerHealth()
+
+  // 检查 SSO 是否启用
+  if (serverStatus.value === 'ok') {
+    await checkSSOStatus()
+  }
 
   // 检查是否是首次运行
   await checkFirstRunStatus()

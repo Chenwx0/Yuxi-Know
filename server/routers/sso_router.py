@@ -21,6 +21,7 @@ from server.utils.auth_utils import AuthUtils
 from server.utils.oauth2_client import get_oauth2_client
 from src.utils.datetime_utils import utc_now_naive
 from server.utils.user_utils import generate_unique_user_id, validate_username
+from src.utils import logger
 
 sso = APIRouter(prefix="/auth/sso", tags=["sso-authentication"])
 
@@ -145,11 +146,16 @@ async def sso_callback(
     # 2. 获取用户信息
     try:
         user_info = await oauth_client.get_user_info(access_token)
+        logger.info(f"SSO 用户信息: {user_info}")
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"获取用户信息失败: {str(e)}",
         )
+
+    # 处理嵌套的 data 字段（部分认证中心返回格式为 {code, msg, data: {...}}）
+    if isinstance(user_info, dict) and "data" in user_info:
+        user_info = user_info["data"]
 
     # 3. 根据字段映射提取用户数据
     field_mapping = oauth_client.get_field_mapping()

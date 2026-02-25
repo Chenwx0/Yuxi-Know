@@ -419,7 +419,6 @@ export const useUserStore = defineStore('user', () => {
       throw error
     }
   }
-  }
 
   return {
     // 状态

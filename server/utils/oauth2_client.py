@@ -59,7 +59,7 @@ class OAuth2Client:
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
-        self.scope = scope or "openid profile email"
+        self.scope = scope
 
     def build_authorization_url(self, state: str | None = None) -> str:
         """构建授权 URL
@@ -74,8 +74,9 @@ class OAuth2Client:
             "response_type": "code",
             "client_id": self.client_id,
             "redirect_uri": self.redirect_uri,
-            "scope": self.scope,
         }
+        if self.scope:
+            params["scope"] = self.scope
         if state:
             params["state"] = state
 
@@ -166,10 +167,10 @@ class OAuth2Client:
             字段映射字典
         """
         return {
-            "username": os.environ.get("SSO_FIELD_MAPPING_USERNAME", "username"),
-            "user_id_sso": os.environ.get("SSO_FIELD_MAPPING_USERID", "sub"),
-            "phone_number": os.environ.get("SSO_FIELD_MAPPING_PHONE", "phone_number"),
-            "avatar": os.environ.get("SSO_FIELD_MAPPING_AVATAR", "picture"),
+            "username": os.environ.get("SSO_FIELD_MAPPING_USERNAME", "name"),
+            "user_id_sso": os.environ.get("SSO_FIELD_MAPPING_USERID", "id"),
+            "phone_number": os.environ.get("SSO_FIELD_MAPPING_PHONE", "mobilePhone"),
+            "avatar": os.environ.get("SSO_FIELD_MAPPING_AVATAR", "avatar"),
             "email": os.environ.get("SSO_FIELD_MAPPING_EMAIL", "email"),
         }
 
